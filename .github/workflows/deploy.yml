@@ -1,0 +1,40 @@
+name: Deploy to Cloudflare Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # The Cloudflare API token is pulled from 1Password at run time, via the OpenMined
+      # CI service account. The deploy is skipped (not failed) until OP_SERVICE_ACCOUNT_TOKEN
+      # is set. CLOUDFLARE_ACCOUNT_ID is a plain repo secret (an identifier, not a credential).
+      OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy notice (1Password not configured)
+        if: env.OP_SERVICE_ACCOUNT_TOKEN == ''
+        run: echo "::notice::OP_SERVICE_ACCOUNT_TOKEN is not set — skipping deploy."
+
+      - name: Load Cloudflare token from 1Password
+        if: env.OP_SERVICE_ACCOUNT_TOKEN != ''
+        uses: 1password/load-secrets-action@v2
+        with:
+          export-env: true
+        env:
+          # 1Password "Cloudflare — internal + share Pages deploy" (Workflow Credentials vault)
+          CLOUDFLARE_API_TOKEN: op://ykxy4sgjfvwqrljzmss2uodwqu/44zdu3dxukwkvnwnirecod34sm/credential
+
+      - name: Deploy to Cloudflare Pages
+        if: env.OP_SERVICE_ACCOUNT_TOKEN != ''
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy public --project-name=openclaims --branch=main
